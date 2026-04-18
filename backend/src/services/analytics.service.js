@@ -1,113 +1,220 @@
 const Customer = require('../models/Customer');
-const ApiError  = require('../utils/ApiError');
-const { buildQuery }          = require('../utils/queryBuilder');
-const { paginate, parsePagination } = require('../utils/paginate');
-const { computeEngagementScore, computeChurnScore } = require('../utils/scoring');
 
 /**
- * CustomerService
- * All database interaction and business logic for the Customer resource.
- * Controllers call these methods — they never touch the Model directly.
+ * AnalyticsService
+ * Read-only aggregate queries consumed by dashboard/analytics pages.
  */
-const CustomerService = {
+const AnalyticsService = {
 
-  // ── List customers with search / filter / sort / pagination ────────────────
-  async listCustomers(query = {}) {
-    const { page, limit } = parsePagination(query);
-
-    // Build dynamic $match from query params
-    const filter = buildQuery(query);
-
-    // Build sort stage
-    const sortField = query.sort || 'createdAt';
-    const sortDir   = query.order === 'asc' ? 1 : -1;
-
-    const pipeline = [
-      { $match: filter },
-      { $sort: { [sortField]: sortDir } },
+  // ── KPI summary cards ─────────────────────────────────────────────────────
+  async getKpis() {
+    const [summary] = await Customer.aggregate([
       {
-        $project: {
-          full_name: 1, email: 1, phone: 1, country: 1, city: 1,
-          age: 1, gender: 1, membership_years: 1,
-          lifetime_value: 1, total_purchases: 1,
-          churned: 1, churn_risk: 1, engagement_score: 1,
-          days_since_last_purchase: 1,
-          createdAt: 1,
+        $group: {
+          _id: null,
+          totalCustomers: { $sum: 1 },
+          avgLifetimeValue: { $avg: { $ifNull: ['$lifetime_value', 0] } },
+          churnedCount: { $sum: { $cond: ['$churned', 1, 0] } },
+          avgEngagementScore: { $avg: { $ifNull: ['$engagement_score', 0] } },
         },
       },
-    ];
+    ]);
 
-    return paginate(Customer, pipeline, { page, limit });
+    if (!summary) {
+      return {
+        totalCustomers: 0,
+        avgLifetimeValue: 0,
+        churnRate: 0,
+        avgEngagementScore: 0,
+      };
+    }
+
+    const churnRate = summary.totalCustomers
+      ? (summary.churnedCount / summary.totalCustomers) * 100
+      : 0;
+
+    return {
+      totalCustomers: summary.totalCustomers,
+      avgLifetimeValue: Number((summary.avgLifetimeValue || 0).toFixed(2)),
+      churnRate: Number(churnRate.toFixed(2)),
+      avgEngagementScore: Number((summary.avgEngagementScore || 0).toFixed(1)),
+    };
   },
 
-  // ── Get one customer (full profile) ───────────────────────────────────────
-  async getCustomerById(id) {
-    const customer = await Customer.findById(id).lean();
-    if (!customer) throw ApiError.notFound(`Customer ${id} not found`);
-    return customer;
-  },
+  // ── Top countries by total revenue (lifetime value) ──────────────────────
+  async getCustomersByCountry(limit = 15) {
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 15;
 
-  // ── Create customer ────────────────────────────────────────────────────────
-  async createCustomer(data) {
-    // Compute derived scores on creation
-    const engagementScore            = computeEngagementScore(data);
-    const { score: churnScore, risk } = computeChurnScore(data);
-
-    const customer = await Customer.create({
-      ...data,
-      engagement_score: engagementScore,
-      churn_score:      churnScore,
-      churn_risk:       risk,
-    });
-
-    return customer.toJSON();
-  },
-
-  // ── Update customer ────────────────────────────────────────────────────────
-  async updateCustomer(id, data) {
-    const existing = await Customer.findById(id);
-    if (!existing) throw ApiError.notFound(`Customer ${id} not found`);
-
-    // Merge and recompute scores if any scoring-related field changes
-    const merged = { ...existing.toObject(), ...data };
-    data.engagement_score = computeEngagementScore(merged);
-    const { score, risk }  = computeChurnScore(merged);
-    data.churn_score       = score;
-    data.churn_risk        = risk;
-
-    const updated = await Customer.findByIdAndUpdate(
-      id,
-      { $set: data },
-      { new: true, runValidators: true }
-    ).lean();
-
-    return updated;
-  },
-
-  // ── Delete customer ────────────────────────────────────────────────────────
-  async deleteCustomer(id) {
-    const customer = await Customer.findByIdAndDelete(id);
-    if (!customer) throw ApiError.notFound(`Customer ${id} not found`);
-    return { id, deleted: true };
-  },
-
-  // ── Bulk compute + persist engagement scores ───────────────────────────────
-  async recomputeAllEngagementScores() {
-    const customers = await Customer.find({}, {
-      login_frequency: 1, session_duration_avg: 1, pages_per_session: 1,
-      email_open_rate: 1, social_media_engagement_score: 1,
-    }).lean();
-
-    const ops = customers.map(c => ({
-      updateOne: {
-        filter: { _id: c._id },
-        update: { $set: { engagement_score: computeEngagementScore(c) } },
+    return Customer.aggregate([
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $or: [{ $eq: ['$country', null] }, { $eq: ['$country', ''] }] },
+              'Unknown',
+              '$country',
+            ],
+          },
+          customerCount: { $sum: 1 },
+          totalRevenue: { $sum: { $ifNull: ['$lifetime_value', 0] } },
+        },
       },
-    }));
+      { $sort: { totalRevenue: -1 } },
+      { $limit: safeLimit },
+      {
+        $project: {
+          _id: 0,
+          country: '$_id',
+          customerCount: 1,
+          totalRevenue: { $round: ['$totalRevenue', 2] },
+        },
+      },
+    ]);
+  },
 
-    await Customer.bulkWrite(ops);
-    return { updated: ops.length };
+  // ── Revenue grouped by signup quarter ────────────────────────────────────
+  async getRevenueBySignupQuarter() {
+    return Customer.aggregate([
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $or: [{ $eq: ['$signup_quarter', null] }, { $eq: ['$signup_quarter', ''] }] },
+              'Unknown',
+              '$signup_quarter',
+            ],
+          },
+          totalRevenue: { $sum: { $ifNull: ['$lifetime_value', 0] } },
+          customerCount: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          _id: 0,
+          quarter: '$_id',
+          totalRevenue: { $round: ['$totalRevenue', 2] },
+          customerCount: 1,
+        },
+      },
+    ]);
+  },
+
+  // ── Churn status overview used in dashboard pie chart ────────────────────
+  async getChurnOverview() {
+    const [summary] = await Customer.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalCustomers: { $sum: 1 },
+          churnedCount: { $sum: { $cond: ['$churned', 1, 0] } },
+          atRiskCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$churned', false] },
+                    { $or: [{ $eq: ['$churn_risk', 'Medium'] }, { $eq: ['$churn_risk', 'High'] }] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const totalCustomers = summary?.totalCustomers || 0;
+    const churnedCount = summary?.churnedCount || 0;
+    const atRiskCount = summary?.atRiskCount || 0;
+    const activeCount = Math.max(totalCustomers - churnedCount - atRiskCount, 0);
+
+    return {
+      totalCustomers,
+      activeCount,
+      atRiskCount,
+      churnedCount,
+    };
+  },
+
+  // ── Engagement score bands ────────────────────────────────────────────────
+  async getEngagementDistribution() {
+    return Customer.aggregate([
+      {
+        $addFields: {
+          band: {
+            $switch: {
+              branches: [
+                { case: { $lt: [{ $ifNull: ['$engagement_score', 0] }, 20] }, then: '0-19' },
+                { case: { $lt: [{ $ifNull: ['$engagement_score', 0] }, 40] }, then: '20-39' },
+                { case: { $lt: [{ $ifNull: ['$engagement_score', 0] }, 60] }, then: '40-59' },
+                { case: { $lt: [{ $ifNull: ['$engagement_score', 0] }, 80] }, then: '60-79' },
+              ],
+              default: '80-100',
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: '$band',
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $addFields: {
+          sortOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$_id', '0-19'] }, then: 1 },
+                { case: { $eq: ['$_id', '20-39'] }, then: 2 },
+                { case: { $eq: ['$_id', '40-59'] }, then: 3 },
+                { case: { $eq: ['$_id', '60-79'] }, then: 4 },
+                { case: { $eq: ['$_id', '80-100'] }, then: 5 },
+              ],
+              default: 99,
+            },
+          },
+        },
+      },
+      { $sort: { sortOrder: 1 } },
+      {
+        $project: {
+          _id: 0,
+          band: '$_id',
+          count: 1,
+        },
+      },
+    ]);
+  },
+
+  // ── Gender chart breakdown ────────────────────────────────────────────────
+  async getGenderBreakdown() {
+    return Customer.aggregate([
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $or: [{ $eq: ['$gender', null] }, { $eq: ['$gender', ''] }] },
+              'Unknown',
+              '$gender',
+            ],
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      {
+        $project: {
+          _id: 0,
+          gender: '$_id',
+          count: 1,
+        },
+      },
+    ]);
   },
 };
 
-module.exports = CustomerService;
+module.exports = AnalyticsService;

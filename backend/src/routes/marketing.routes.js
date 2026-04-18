@@ -2,7 +2,6 @@ const express = require('express');
 const router  = express.Router();
 
 const MarketingController = require('../controllers/marketing.controller');
-const { protect }         = require('../middleware/auth');
 
 /**
  * Marketing automation routes
@@ -21,7 +20,7 @@ router.get('/triggers', MarketingController.triggerPreviews);
 // Body: { "dryRun": true | false }
 // dryRun=true  → preview only, no DB writes
 // dryRun=false → logs marketing_actions to matched customers
-router.post('/run-automation', protect, MarketingController.runAutomation);
+router.post('/run-automation', MarketingController.runAutomation);
 
 // GET  /api/marketing/by-action/:action?page=1&limit=20
 // Returns customers who received a specific action

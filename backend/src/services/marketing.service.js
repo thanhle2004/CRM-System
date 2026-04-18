@@ -80,6 +80,7 @@ const MarketingService = {
         }).limit(5).lean();
 
         return {
+          action: rule.key,
           key:    rule.key,
           label:  rule.label,
           reason: rule.reason,
@@ -117,8 +118,10 @@ const MarketingService = {
       }
 
       results.push({
+        action:   rule.key,
         rule:     rule.key,
         label:    rule.label,
+        triggered: customers.length,
         affected: customers.length,
         status:   dryRun ? 'preview' : 'logged',
         customers: customers.slice(0, 10).map(c => ({
@@ -131,6 +134,7 @@ const MarketingService = {
 
     return {
       dryRun,
+      totalTriggered: totalAffected,
       totalAffected,
       executedAt: new Date().toISOString(),
       results,
@@ -164,6 +168,9 @@ const MarketingService = {
   // ── List all available trigger rule definitions (for UI) ─────────────────
   getTriggerDefinitions() {
     return TRIGGER_RULES.map(({ key, label, reason, match }) => ({
+      action: key,
+      description: reason,
+      criteria: match,
       key, label, reason,
       conditions: match,
     }));
