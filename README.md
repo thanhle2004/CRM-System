@@ -271,3 +271,154 @@ npm run preview
 ## Course Context
 
 Project for Information System Management, IU-VNU-HCM.
+
+---
+
+# CRM System — Frontend
+
+A React dashboard for customer relationship management, analytics, churn prediction, segmentation, and marketing automation.
+
+---
+
+## Tech Stack
+
+| Layer | Library / Tool |
+|---|---|
+| Framework | React 18.3 |
+| Routing | React Router DOM 6 |
+| Data fetching | TanStack React Query 5 |
+| HTTP client | Axios 1.7 |
+| Styling | Tailwind CSS 3.4 |
+| Forms | React Hook Form 7 |
+| Charts | Recharts 2.12 |
+| Icons | Lucide React |
+| Build tool | Vite 5.4 |
+
+---
+
+## Getting Started
+
+**Prerequisites:** Node.js ≥ 18, backend running on `http://localhost:5000`
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:3000
+```
+
+```bash
+npm run build      # production build → dist/
+npm run preview    # preview production build locally
+```
+
+The dev server proxies all `/api/*` requests to `http://localhost:5000`.
+
+---
+
+## Folder Structure
+
+```
+frontend/
+├── src/
+│   ├── api/
+│   │   ├── client.js          # Axios instance with JWT interceptor
+│   │   ├── analytics.js       # KPI, revenue, engagement endpoints
+│   │   ├── customers.js       # Customer CRUD
+│   │   ├── churn.js           # Churn scoring endpoints
+│   │   ├── segments.js        # Segmentation endpoints
+│   │   └── marketing.js       # Marketing automation endpoints
+│   │
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Layout.jsx     # App shell with sidebar
+│   │   │   └── Sidebar.jsx    # Navigation sidebar
+│   │   └── ui/
+│   │       ├── Badge.jsx
+│   │       ├── Button.jsx
+│   │       ├── Card.jsx
+│   │       ├── Input.jsx
+│   │       ├── KpiCard.jsx
+│   │       ├── Modal.jsx
+│   │       ├── Pagination.jsx
+│   │       └── Spinner.jsx
+│   │
+│   ├── pages/
+│   │   ├── Dashboard.jsx       # KPIs + overview charts
+│   │   ├── Customers.jsx       # Customer list, search, filters
+│   │   ├── CustomerDetail.jsx  # Customer profile + inline edit
+│   │   ├── Analytics.jsx       # Revenue & engagement charts
+│   │   ├── Segmentation.jsx    # Behavioral / value / risk segments
+│   │   ├── ChurnAnalysis.jsx   # Churn prediction & at-risk table
+│   │   └── Marketing.jsx       # Marketing automation triggers
+│   │
+│   ├── lib/
+│   │   └── utils.js            # Currency, percent, number formatters
+│   │
+│   ├── App.jsx                 # Route configuration
+│   └── main.jsx                # Entry point, QueryClient setup
+│
+├── vite.config.js
+├── tailwind.config.js
+└── package.json
+```
+
+---
+
+## Pages & Routes
+
+| Route | Page | Description |
+|---|---|---|
+| `/` | Dashboard | KPI cards, revenue by quarter, customer status & engagement charts |
+| `/customers` | Customers | Paginated list; search by name/email; filter by country, churn status, risk level; create & delete |
+| `/customers/:id` | Customer Detail | Full profile with personal info, financials, engagement metrics, churn score; inline edit; rescore |
+| `/analytics` | Analytics | Revenue by country & quarter, engagement distribution, gender breakdown |
+| `/segments` | Segmentation | Behavioral (Power/Regular/Occasional/Dormant), value (High/Mid/Low LTV), and risk segments with charts |
+| `/churn` | Churn Analysis | Risk band summary cards, churn distribution chart, at-risk customers table with rescoring |
+| `/marketing` | Marketing | Dry-run preview and live execution of automation triggers (discount, re-engagement, loyalty, winback, review) |
+
+---
+
+## API Integration
+
+All API modules live in `src/api/`. The Axios client in `client.js`:
+- Attaches the JWT token from `localStorage.crm_token` to every request.
+- Standardises error responses.
+
+| Module | Endpoints used |
+|---|---|
+| `analytics.js` | KPIs, revenue, engagement, gender |
+| `customers.js` | List (with filters), get one, create, update, delete |
+| `churn.js` | Risk distribution, at-risk list, rescore one / all |
+| `segments.js` | Behavioral, value, risk breakdown |
+| `marketing.js` | Trigger definitions, preview, execute |
+
+---
+
+## Authentication
+
+The app expects a JWT token stored in `localStorage` under the key `crm_token`. The token is attached automatically by the Axios interceptor. No login UI is included in this version — obtain the token from the backend and set it manually or integrate a login page.
+
+---
+
+## React Query Configuration
+
+Configured in `main.jsx`:
+
+```js
+staleTime: 2 * 60 * 1000   // 2 minutes
+retry: 1
+```
+
+---
+
+## Environment
+
+No `.env` file is required. The backend URL is set in `vite.config.js`:
+
+```js
+proxy: {
+  '/api': 'http://localhost:5000'
+}
+```
+
+Change this if your backend runs on a different port.
