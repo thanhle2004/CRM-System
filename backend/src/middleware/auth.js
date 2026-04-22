@@ -54,6 +54,24 @@ function protect(req, res, next) {
   }
 }
 
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
 /**
  * Restrict access to specific roles.
  * @param  {...string} roles — e.g. restrictTo('admin') or restrictTo('admin','staff')
@@ -81,8 +99,8 @@ function restrictTo(...roles) {
  */
 function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    expiresIn: process.env.JWT_EXPIRES_IN || '15m',
   });
 }
 
-module.exports = { protect, restrictTo, signToken };
+module.exports = { protect, optionalAuth, restrictTo, signToken };
