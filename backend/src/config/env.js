@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+const dotenv = require('dotenv');
 
 dotenv.config();
 
@@ -9,13 +9,18 @@ const requiredEnvVars = [
 
 requiredEnvVars.forEach((key) => {
   if (!process.env[key]) {
-    console.error(`❌ Missing required env variable: ${key}`);
+    console.error(`Missing required env variable: ${key}`);
     process.exit(1);
   }
 });
 
-export const env = {
-  PORT: process.env.PORT || 5000,
+const env = {
+  PORT: Number(process.env.PORT),
   MONGO_URI: process.env.MONGO_URI,
-  NODE_ENV: process.env.NODE_ENV || "development",
+  NODE_ENV: process.env.NODE_ENV,
+  CLIENT_ORIGIN: process.env.CLIENT_ORIGIN,
+  JWT_SECRET: process.env.JWT_SECRET,
+  IS_PROD: process.env.NODE_ENV,
 };
+
+module.exports = env;
