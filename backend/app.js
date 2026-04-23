@@ -1,5 +1,6 @@
 const express   = require('express');
 const cors      = require('cors');
+const cookieParser = require('cookie-parser');
 const helmet    = require('helmet');
 const morgan    = require('morgan');
 const rateLimit = require('express-rate-limit');
@@ -27,6 +28,7 @@ app.use(cors({
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // ── Request logging ───────────────────────────────────────────────────────────
 if (!env.IS_PROD) {

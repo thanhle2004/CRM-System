@@ -6,6 +6,7 @@ const analyticsRoutes = require('./analytics.routes');
 const segmentRoutes   = require('./segment.routes');
 const churnRoutes     = require('./churn.routes');
 const marketingRoutes = require('./marketing.routes');
+const authRoutes      = require('./auth.routes');
 
 // ── Health check ──────────────────────────────────────────────────────────────
 router.get('/health', (req, res) => {
@@ -23,5 +24,6 @@ router.use('/analytics', analyticsRoutes);
 router.use('/segments',  segmentRoutes);
 router.use('/churn',     churnRoutes);
 router.use('/marketing', marketingRoutes);
+router.use('/auth',      authRoutes);
 
 module.exports = router;
